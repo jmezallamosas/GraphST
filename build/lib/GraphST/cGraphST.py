@@ -95,7 +95,7 @@ class GraphST():
         self.datatype = datatype
         self.batch_size = batch_size
         
-        #fix_seed(self.random_seed)
+        fix_seed(self.random_seed)
         
         if 'highly_variable' not in adata.var.keys():
            preprocess(self.adata)
@@ -115,12 +115,8 @@ class GraphST():
         self.features = torch.FloatTensor(self.adata.obsm['feat'].copy()).to(self.device)
         self.features_a = torch.FloatTensor(self.adata.obsm['feat_a'].copy()).to(self.device)
         self.label_CSL = torch.FloatTensor(self.adata.obsm['label_CSL']).to(self.device)
-
-        # Preprocess adjacency matrix
-        adj = preprocess_adj(self.adata.obsm['adj'].astype(np.uint8)) # Use uint8 for initial storage
-        self.adj = sparse_mx_to_torch_sparse_tensor(adj).to(self.device).coalesce() # Ensure coalesced
-        graph_neigh = preprocess_adj(self.adata.obsm['graph_neigh'].astype(np.uint8)) # Use uint8 for initial storage
-        self.graph_neigh = sparse_mx_to_torch_sparse_tensor(graph_neigh + eye(self.adj.shape[0])).to(self.device).coalesce() # Create a sparse identity matrix and addit
+        self.adj = sparse_mx_to_torch_sparse_tensor(self.adata.obsm['adj']).to(self.device)
+        self.graph_neigh = sparse_mx_to_torch_sparse_tensor(self.adata.obsm['graph_neigh'] + eye(self.adj.shape[0]).tocsc()).to(self.device) # Create a sparse identity matrix and addit
     
         self.dim_input = self.features.shape[1]
         self.dim_output = dim_output
@@ -128,7 +124,11 @@ class GraphST():
         if self.datatype in ['Stereo', 'Slide']:
            # using sparse
            print('Building sparse matrix ...')
-           self.adj = preprocess_adj_sparse(self.adj).to(self.device).coalesce()
+           self.adj = preprocess_adj_sparse(self.adj).to(self.device)
+        else: 
+           # standard version
+           self.adj = preprocess_adj(self.adj)
+           self.adj = sparse_mx_to_torch_sparse_tensor(self.adj).to(self.device)
         
         if self.deconvolution:
            self.adata_sc = adata_sc.copy() 
@@ -180,25 +180,10 @@ class GraphST():
                 features_batch = self.features[start_idx:end_idx]
                 features_a_batch = permutation(features_batch)
                 label_CSL_batch = self.label_CSL[start_idx:end_idx]
-
-                # Get batch of the adjacency matrix
-                self.adj = self.adj.coalesce()
-                row, col = self.adj.indices()
-                values = self.adj.values()
-                mask = (row >= start_idx) & (row < end_idx) & (col >= start_idx) & (col < end_idx)
-                adj_batch_indices = torch.stack([row[mask] - start_idx, col[mask] - start_idx])
-                adj_batch = torch.sparse_coo_tensor(adj_batch_indices, values[mask], (end_idx - start_idx, end_idx-start_idx)).coalesce()
+                adj_batch = self.adj[start_idx:end_idx, :].tocsc()[:, start_idx:end_idx] # Sparse slice
                 
-                # Get batch of the graph_neigh matrix
-                self.graph_neigh = self.graph_neigh.coalesce()
-                graph_neigh_row, graph_neigh_col = self.graph_neigh.indices()
-                graph_neigh_values = self.graph_neigh.values()
-                graph_neigh_mask = (graph_neigh_row >= start_idx) & (graph_neigh_row < end_idx) & (graph_neigh_col >= start_idx) & (graph_neigh_col < end_idx)
-                graph_neigh_batch_indices = torch.stack([graph_neigh_row[graph_neigh_mask] - start_idx, graph_neigh_col[graph_neigh_mask] - start_idx])
-                graph_neigh_batch = torch.sparse_coo_tensor(graph_neigh_batch_indices, graph_neigh_values[graph_neigh_mask], (end_idx - start_idx, end_idx - start_idx)).coalesce()
+                self.hiden_feat, self.emb, ret, ret_a = self.model(features_batch, features_a_batch, adj_batch)
                 
-                self.hiden_feat, self.emb, ret, ret_a = self.model(features_batch, features_a_batch, adj_batch, graph_neigh_batch)
-
                 self.loss_sl_1 = self.loss_CSL(ret, label_CSL_batch)
                 self.loss_sl_2 = self.loss_CSL(ret_a, label_CSL_batch)
                 self.loss_feat = F.mse_loss(features_batch, self.emb)
