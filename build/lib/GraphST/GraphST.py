@@ -95,7 +95,7 @@ class GraphST():
         self.datatype = datatype
         self.batch_size = batch_size
         
-        #fix_seed(self.random_seed)
+        fix_seed(self.random_seed)
         
         if 'highly_variable' not in adata.var.keys():
            preprocess(self.adata)
