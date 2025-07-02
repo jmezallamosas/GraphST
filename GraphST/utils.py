@@ -64,18 +64,18 @@ def clustering(adata, n_clusters=7, radius=50, key='emb', method='mclust', start
     """
     
     pca = PCA(n_components=n_components, random_state=42) 
-    embedding = pca.fit_transform(adata.obsm['emb'].copy())
-    adata.obsm['emb_pca'] = embedding
+    embedding = pca.fit_transform(adata.obsm[key].copy())
+    adata.obsm[f'{key}_pca'] = embedding
     
     if method == 'mclust':
-       adata = mclust_R(adata, used_obsm='emb_pca', num_cluster=n_clusters)
+       adata = mclust_R(adata, used_obsm=f'{key}_pca', num_cluster=n_clusters)
        adata.obs['domain'] = adata.obs['mclust']
     elif method == 'leiden':
-       res = search_res(adata, n_clusters, use_rep='emb_pca', method=method, start=start, end=end, increment=increment)
+       res = search_res(adata, n_clusters, use_rep=f'{key}_pca', method=method, start=start, end=end, increment=increment)
        sc.tl.leiden(adata, random_state=0, resolution=res)
        adata.obs['domain'] = adata.obs['leiden']
     elif method == 'louvain':
-       res = search_res(adata, n_clusters, use_rep='emb_pca', method=method, start=start, end=end, increment=increment)
+       res = search_res(adata, n_clusters, use_rep=f'{key}_pca', method=method, start=start, end=end, increment=increment)
        sc.tl.louvain(adata, random_state=0, resolution=res)
        adata.obs['domain'] = adata.obs['louvain'] 
        

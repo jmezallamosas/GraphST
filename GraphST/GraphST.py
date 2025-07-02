@@ -215,14 +215,22 @@ class GraphST():
             self.model.eval()
             if self.deconvolution:
                 self.emb_rec = self.model(self.features, self.features_a, self.adj)[1]
+                self.emb_hidden = self.model(self.features, self.features_a, self.adj)[0]
                 return self.emb_rec
             else:
                 if self.datatype in ['Stereo', 'Slide']:
                     self.emb_rec = self.model(self.features, self.features_a, self.adj)[1]
                     self.emb_rec = F.normalize(self.emb_rec, p=2, dim=1).detach().cpu().numpy()
+                    self.emb_hidden = self.model(self.features, self.features_a, self.adj)[0]
+                    self.emb_hidden = F.normalize(self.emb_hidden, p=2, dim=1).detach().cpu().numpy()
+
+
                 else:
                     self.emb_rec = self.model(self.features, self.features_a, self.adj)[1].detach().cpu().numpy()
+                    self.emb_hidden = self.model(self.features, self.features_a, self.adj)[0].detach().cpu().numpy()
+
                 self.adata.obsm['emb'] = self.emb_rec
+                self.adata.obsm['emb_hidden'] = self.emb_hidden
                 
                 return self.adata
     
